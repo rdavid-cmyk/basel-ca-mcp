@@ -1,0 +1,31 @@
+{
+  "name": "basel-ca-api",
+  "version": "1.0.0",
+  "description": "Basel Convention Competent Authority Database API",
+  "main": "index.js",
+  "scripts": {
+    "import": "node import_data.js",
+    "generate-keys": "node generate_test_keys.js",
+    "test": "curl -H 'X-API-Key: bca_test' http://localhost:8090/api/v1/health"
+  },
+  "keywords": [
+    "basel-convention",
+    "hazardous-waste",
+    "api",
+    "environmental-compliance"
+  ],
+  "author": "Richard - DexMetal LLC",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "axios": "^1.13.6",
+    "concurrently": "^9.2.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "pocketbase": "^0.26.6"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

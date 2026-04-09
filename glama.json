@@ -1,0 +1,11 @@
+{
+  "name": "Basel CA MCP Server",
+  "description": "Access Basel Convention Competent Authority data for 182 countries. Look up CA contact details, addresses, and jurisdiction information by country code or name.",
+  "url": "https://mcp.dexmetal.com/sse",
+  "transport": ["sse"],
+  "tools": [
+    { "name": "get_competent_authority", "description": "Get Basel CA details by country code or name" },
+    { "name": "list_competent_authorities", "description": "List all 182 Basel Convention Competent Authorities" },
+    { "name": "check_api_health", "description": "Check API status" }
+  ]
+}
