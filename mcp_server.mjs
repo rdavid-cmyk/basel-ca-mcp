@@ -157,6 +157,22 @@ async function main() {
     // Map of sessionId -> { transport, server } for active SSE connections
     const sessions = new Map();
 
+
+    app.get('/.well-known/mcp/server-card.json', (req, res) => {
+      res.json({
+        name: 'DexMetal Basel CA MCP',
+        description: 'Live MCP server providing programmatic access to 182 Basel Convention Competent Authorities.',
+        url: 'https://mcp.dexmetal.com/sse',
+        tools: [
+          { name: 'get_competent_authority', description: 'Returns CA name, address, contact, and jurisdiction for any ISO country code' },
+          { name: 'list_competent_authorities', description: 'Returns all 182 Basel Convention Competent Authorities' },
+          { name: 'check_api_health', description: 'Health check for the Basel CA API' }
+        ],
+        homepage: 'https://dexmetal.com',
+        contact: 'info@dexmetal.com'
+      });
+    });
+
     app.get("/sse", async (req, res) => {
       const sessionId = crypto.randomUUID();
 
