@@ -1,0 +1,3 @@
+startCommand:
+  type: url
+  url: https://mcp.dexmetal.com/sse
