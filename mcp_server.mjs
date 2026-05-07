@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
@@ -16,7 +17,6 @@ const API_BASE_URL = process.env.BASEL_API_URL || `http://localhost:${process.en
 const API_KEY = process.env.BASEL_API_KEY || "bca_test_key";
 const MCP_PORT = process.env.MCP_PORT || 3000;
 
-// Configure Axios client with the API key
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -25,119 +25,66 @@ const apiClient = axios.create({
   },
 });
 
-// Factory: creates a fresh Server instance with all tools registered.
-// Called once per SSE connection so instances are never shared.
 function createMcpServer() {
   const server = new Server(
-    {
-      name: "basel-ca-api-mcp",
-      version: "1.0.0",
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    }
+    { name: "basel-ca-api-mcp", version: "1.0.0" },
+    { capabilities: { tools: {} } }
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        {
-          name: "get_competent_authority",
-          description: "Retrieves details of a specific Basel Convention Competent Authority by its country code or name.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              country_code: {
-                type: "string",
-                description: "The name or code of the country (e.g., 'Trinidad and Tobago' or 'TT')",
-              },
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: "get_competent_authority",
+        description: "Retrieves details of a specific Basel Convention Competent Authority by its country code or name.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            country_code: {
+              type: "string",
+              description: "The name or code of the country (e.g., 'Trinidad and Tobago' or 'TT')",
             },
-            required: ["country_code"],
           },
+          required: ["country_code"],
         },
-        {
-          name: "list_competent_authorities",
-          description: "Returns a list of all 182 Basel Convention Competent Authorities.",
-          inputSchema: {
-            type: "object",
-            properties: {},
-          },
-        },
-        {
-          name: "check_api_health",
-          description: "Checks the status of the Basel CA API.",
-          inputSchema: {
-            type: "object",
-            properties: {},
-          },
-        },
-      ],
-    };
-  });
+      },
+      {
+        name: "list_competent_authorities",
+        description: "Returns a list of all 182 Basel Convention Competent Authorities.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "check_api_health",
+        description: "Checks the status of the Basel CA API.",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ],
+  }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
-
     try {
       switch (name) {
         case "get_competent_authority": {
           const countryCode = String(args?.country_code);
-          if (!countryCode) {
-            throw new Error("country_code is required");
-          }
-
+          if (!countryCode) throw new Error("country_code is required");
           const response = await apiClient.get(`/api/v1/ca/${encodeURIComponent(countryCode)}`);
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(response.data, null, 2),
-              },
-            ],
-          };
+          return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
         }
-
         case "list_competent_authorities": {
           const response = await apiClient.get("/api/v1/ca");
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(response.data, null, 2),
-              },
-            ],
-          };
+          return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
         }
-
         case "check_api_health": {
           const response = await axios.get(`${API_BASE_URL}/api/v1/health`);
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(response.data, null, 2),
-              },
-            ],
-          };
+          return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
         }
-
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
     } catch (error) {
       const errorMsg = error.response?.data?.message || error.message;
       return {
-        content: [
-          {
-            type: "text",
-            text: `Error interacting with Basel API: ${errorMsg}`,
-          },
-        ],
+        content: [{ type: "text", text: `Error interacting with Basel API: ${errorMsg}` }],
         isError: true,
       };
     }
@@ -146,23 +93,21 @@ function createMcpServer() {
   return server;
 }
 
-// Start the server
 async function main() {
   const transportMode = process.env.MCP_TRANSPORT || "stdio";
 
   if (transportMode === "sse") {
     const app = express();
     app.use(cors());
+    app.use(express.json());
 
-    // Map of sessionId -> { transport, server } for active SSE connections
     const sessions = new Map();
-
 
     app.get('/.well-known/mcp/server-card.json', (req, res) => {
       res.json({
         name: 'DexMetal Basel CA MCP',
         description: 'Live MCP server providing programmatic access to 182 Basel Convention Competent Authorities.',
-        url: 'https://mcp.dexmetal.com/sse',
+        url: 'https://mcp.dexmetal.com/mcp',
         tools: [
           { name: 'get_competent_authority', description: 'Returns CA name, address, contact, and jurisdiction for any ISO country code' },
           { name: 'list_competent_authorities', description: 'Returns all 182 Basel Convention Competent Authorities' },
@@ -173,21 +118,34 @@ async function main() {
       });
     });
 
+    // Streamable HTTP transport (MCP spec 2025-03-26) — used by Smithery scanner
+    app.post('/mcp', async (req, res) => {
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      const server = createMcpServer();
+      res.on('close', () => server.close().catch(() => {}));
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    });
+
+    app.get('/mcp', (req, res) => {
+      res.status(405).json({ error: 'Use POST /mcp for Streamable HTTP' });
+    });
+
+    app.delete('/mcp', (req, res) => {
+      res.status(405).json({ error: 'Use POST /mcp for Streamable HTTP' });
+    });
+
+    // Legacy SSE transport — kept for backwards compatibility
     app.get("/sse", async (req, res) => {
       const sessionId = crypto.randomUUID();
-
-      // Fresh server instance per connection — never reuse across connections
       const server = createMcpServer();
       const transport = new SSEServerTransport("/message", res);
-
       sessions.set(sessionId, { transport, server });
-
       res.on("close", () => {
         sessions.delete(sessionId);
         console.log(`SSE connection closed: ${sessionId}`);
         server.close().catch(() => {});
       });
-
       await server.connect(transport);
       console.log(`New SSE connection established: ${sessionId}`);
     });
@@ -228,16 +186,12 @@ async function main() {
     <li><code>list_competent_authorities</code> — List all 182 Basel Convention CAs</li>
     <li><code>check_api_health</code> — Check server status</li>
   </ul>
-  <h2>Connect via Claude Desktop</h2>
-  <pre>{
-  "mcpServers": {
-    "basel-ca": {
-      "url": "https://mcp.dexmetal.com/sse"
-    }
-  }
-}</pre>
-  <p>SSE endpoint: <a href="https://mcp.dexmetal.com/sse">https://mcp.dexmetal.com/sse</a></p>
-  <p>Health: <a href="https://mcp.dexmetal.com/health">https://mcp.dexmetal.com/health</a></p>
+  <h2>Endpoints</h2>
+  <ul>
+    <li>Streamable HTTP: <a href="https://mcp.dexmetal.com/mcp">https://mcp.dexmetal.com/mcp</a> (POST)</li>
+    <li>Legacy SSE: <a href="https://mcp.dexmetal.com/sse">https://mcp.dexmetal.com/sse</a> (GET)</li>
+    <li>Health: <a href="https://mcp.dexmetal.com/health">https://mcp.dexmetal.com/health</a></li>
+  </ul>
   <p style="margin-top:48px; font-size:0.85rem; color:#888;">© DexMetal LLC · <a href="https://dexmetal.com">dexmetal.com</a></p>
 </body>
 </html>`);
@@ -248,10 +202,9 @@ async function main() {
     });
 
     app.listen(MCP_PORT, () => {
-      console.log(`Basel CA API MCP Server (SSE) running on port ${MCP_PORT}`);
+      console.log(`Basel CA API MCP Server (SSE + Streamable HTTP) running on port ${MCP_PORT}`);
     });
   } else {
-    // STDIO: single server, connect once
     const server = createMcpServer();
     const transport = new StdioServerTransport();
     await server.connect(transport);
