@@ -103,7 +103,7 @@ async function main() {
 
     const sessions = new Map();
 
-    app.get('/.well-known/mcp/server-card.json', (req, res) => {
+    app.get(['/.well-known/mcp/server-card.json', '/.well-known/server-card.json'], (req, res) => {
       res.json({
         name: 'DexMetal Basel CA MCP',
         description: 'Live MCP server providing programmatic access to 182 Basel Convention Competent Authorities.',
